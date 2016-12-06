@@ -272,22 +272,24 @@ var/global/list/obj/item/device/pda/PDAs = list()
 	return
 
 //NOTE: graphic resources are loaded on client login
-/obj/item/device/pda/attack_self(mob/user)
 
+/obj/item/device/pda/attack_self(mob/user)
 	user.set_machine(src)
 
-	if(active_uplink_check(user))
+	if(hidden_uplink && hidden_uplink.active)
+		hidden_uplink.interact(user)
 		return
 
-	var/dat = "<html><head><title>Personal Data Assistant</title></head><body bgcolor=\"#808000\"><style>a, a:link, a:visited, a:active, a:hover { color: #000000; }img {border-style:none;}</style>"
+	var/dat = "<html><head><title>Personal Data Assistant</title></head><body>"
 
 	dat += "<a href='byond://?src=\ref[src];choice=Close'><img src=pda_exit.png> Close</a>"
+
+	dat += "<a href='byond://?src=\ref[src];choice=Refresh'><img src=pda_refresh.png> Refresh</a>"
 
 	if ((!isnull(cartridge)) && (mode == 0))
 		dat += " | <a href='byond://?src=\ref[src];choice=Eject'><img src=pda_eject.png> Eject [cartridge]</a>"
 	if (mode)
 		dat += " | <a href='byond://?src=\ref[src];choice=Return'><img src=pda_menu.png> Return</a>"
-	dat += " | <a href='byond://?src=\ref[src];choice=Refresh'><img src=pda_refresh.png> Refresh</a>"
 
 	dat += "<br>"
 
@@ -297,13 +299,13 @@ var/global/list/obj/item/device/pda/PDAs = list()
 	else
 		switch (mode)
 			if (0)
-				dat += "<h2>PERSONAL DATA ASSISTANT v.1.2</h2>"
+				dat += "<h2>PERSONAL DATA ASSISTANT v.2.1</h2>"
 				dat += "Owner: [owner], [ownjob]<br>"
-				dat += text("ID: <A href='?src=\ref[src];choice=Authenticate'>[id ? "[id.registered_name], [id.assignment]" : "----------"]")
-				dat += text("<br><A href='?src=\ref[src];choice=UpdateInfo'>[id ? "Update PDA Info" : ""]</A><br><br>")
+				dat += text("ID: <A href='?src=\ref[src];choice=Authenticate'>[id ? "ID: [id.registered_name], [id.assignment]" : "----------"]</A>")
+				dat += text("<br> <A href='?src=\ref[src];choice=UpdateInfo'>[id ? "Update PDA Info" : ]</A><br><br>")
 
 				dat += "[worldtime2text()]<br>" //:[world.time / 100 % 6][world.time / 100 % 10]"
-				dat += "[time2text(world.realtime, "MMM DD")] [year_integer+544]"
+				dat += "[time2text(world.realtime, "MMM DD")] [year_integer+540]"
 
 				dat += "<br><br>"
 
@@ -397,12 +399,12 @@ var/global/list/obj/item/device/pda/PDAs = list()
 				dat += "<h4><img src=pda_menu.png> Detected PDAs</h4>"
 
 				dat += "<ul>"
-
 				var/count = 0
 
 				if (!toff)
 					for (var/obj/item/device/pda/P in sortNames(get_viewable_pdas()))
-						if (P == src)	continue
+						if (P == src)
+							continue
 						dat += "<li><a href='byond://?src=\ref[src];choice=Message;target=\ref[P]'>[P]</a>"
 						if (istype(cartridge, /obj/item/weapon/cartridge/syndicate) && P.detonate)
 							dat += " (<a href='byond://?src=\ref[src];choice=Detonate;target=\ref[P]'><img src=pda_boom.png>*Detonate*</a>)"
@@ -415,6 +417,8 @@ var/global/list/obj/item/device/pda/PDAs = list()
 				dat += "</ul>"
 				if (count == 0)
 					dat += "None detected.<br>"
+			//	else if(cartridge && cartridge.spam_enabled)
+			//		dat += "<a href='byond://?src=\ref[src];choice=MessageAll'>Send To All</a>"
 
 			if(21)
 				dat += "<h4><img src=pda_mail.png> SpaceMessenger V3.9.6</h4>"
@@ -458,16 +462,18 @@ var/global/list/obj/item/device/pda/PDAs = list()
 				dat += cart
 
 	dat += "</body></html>"
-	user << browse(dat, "window=pda;size=400x444;border=1;can_resize=1;can_close=0;can_minimize=0")
+	var/datum/browser/popup = new(user, src.name, 0,0, src)
+	popup.set_content(dat)
+	popup.open(0)
 	onclose(user, "pda", src)
+
 
 /obj/item/device/pda/Topic(href, href_list)
 	..()
 	var/mob/living/U = usr
 	//Looking for master was kind of pointless since PDAs don't appear to have one.
-	//if ((src in U.contents) || ( istype(loc, /turf) && in_range(src, U) ) )
 
-	if(can_use(U)) //Why reinvent the wheel? There's a proc that does exactly that.
+	if(usr.canUseTopic(src) && !href_list["close"])
 		add_fingerprint(U)
 		U.set_machine(src)
 
@@ -493,8 +499,11 @@ var/global/list/obj/item/device/pda/PDAs = list()
 			if ("Authenticate")//Checks for ID
 				id_check(U, 1)
 			if("UpdateInfo")
-				ownjob = id.assignment
-				update_label()
+				if(id)
+					ownjob = id.assignment
+					update_label()
+				else
+					return
 			if("Eject")//Ejects the cart, only done from hub.
 				if (!isnull(cartridge))
 					var/turf/T = loc
